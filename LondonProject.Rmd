@@ -1,0 +1,776 @@
+---
+title: "Housing price estimation in London"
+author: "Ruben Campos"
+date: "15/10/2022"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 3
+    latex_engine: xelatex
+mainfont: "Calibri"
+urlcolor: blue
+---
+
+```{r Setup, warning=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE , warning = FALSE, message = FALSE, fig.align="center")
+
+################## Packages
+if(!require(classInt)) install.packages("classInt", repos = "http://cran.us.r-project.org")
+if(!require(corrplot)) install.packages("corrplot", repos = "http://cran.us.r-project.org")
+if(!require(ggplot2)) install.packages("ggplot2", repos = "http://cran.us.r-project.org")
+if(!require(gridExtra)) install.packages("gridExtra", repos = "http://cran.us.r-project.org")
+if(!require(MASS)) install.packages("MASS", repos = "http://cran.us.r-project.org")
+if(!require(readxl)) install.packages("readxl", repos = "http://cran.us.r-project.org")
+if(!require(RColorBrewer)) install.packages("RColorBrewer", repos = "http://cran.us.r-project.org")
+if(!require(rgdal)) install.packages("rgdal", repos = "http://cran.us.r-project.org")
+if(!require(rgeos)) install.packages("rgeos", repos = "http://cran.us.r-project.org")
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(PerformanceAnalytics)) install.packages("PerformanceAnalytics", repos = "http://cran.us.r-project.org")
+
+library(classInt)
+library(corrplot)
+library(ggplot2)
+library(gridExtra)
+library(MASS)
+library(readxl)
+library(RColorBrewer)
+library(rgdal)
+library(rgeos)
+library(tidyverse)
+library(PerformanceAnalytics)
+
+```
+
+```{r Format_Functions, warning=FALSE, include=FALSE}
+
+#Set thousands separator
+knitr::knit_hooks$set(inline = function(x) { if(!is.numeric(x)){ x }else{ prettyNum(round(x,2), big.mark=".") } })
+
+#Function for thousands separator in table output
+niceKable = function(...) {
+  knitr::kable(..., 
+               position = 'HOLD_position',
+               format.args = list(decimal.mark = ',',
+               big.mark = ".")) %>% kable_styling(latex_options = "HOLD_position")
+}
+
+```
+
+\newpage
+
+# 1.	Project Introduction  
+  
+I lived in London for seven years, as a teenager. It was the late 1980s and early 1990s and house rental or even purchase prices, while not low, were not as higher as they are right now. Checking the official data, we can see that in 1995 the average price of a house in London was 74.721£; in the last price revision, in July 2022, the official statement *London Data Store* indicated that the average house price in London of a house was 527.491£. In fact, London, together with Geneva and Zurich, has the highest average cost of an apartment in Europe in the 1st quarter 2022: 13.593,52£ per square meter.
+
+There are many factors to understand this price raid, and we are going to detail them briefly, although the objective of this project is, taking into account the data provided by government authorities, to establish the strong relationships between house prices in the London metropolitan area and different parameters such as the floor area, the location, number of rooms or bathrooms... and the price that a home can reach according to the relevance of these parameters.  
+  
+# 2.	Understanding a problem: the increase in housing prices
+
+We could think that perhaps the income of London citizens has increased in a similar proportion to the increase in housing prices, but as we can see below, this has not been the case:
+
+![House price to earning ratios](img\001.png)
+But, what is the reason for this price escalation?. According to expert british economists, the following could be mentioned:
+
+## *Relatively low-interest rates*
+Low-interest rates make buying a home more attractive than renting. Also, low interest rates mean that buying a home can earn a better rate of return than buying other forms of investment, such as stocks. An investor looks at the return on housing (rental income) versus the cost of buying a home (mortgage interest payments). Very low interest rates increase the attractiveness of buying a home as an investment. Since 1992 interest rates in the UK have fallen from 15% to 0.5%, making the cost of getting a mortgage much lower.
+
+![Uk Inflation and Base rates](img\002.png)  
+During a period of high inflation (as we see in 2022) it also makes it attractive to buy a house as during periods of high inflation, houses (a real asset) will hold their value better than cash in a bank. Basically, the era of very low interest rates has been a key factor in pushing up house prices  
+
+## *Constraints on House Building/supply* 
+Because of the growing number of households and growing demand for housing, the British government estimate Uk needs to build 250.000 new houses a year, just to keep pace with a rising population. Because house building is at its lowest level since the Second World War.  
+  
+There are many constraints on the building of houses:  
+  
+- In the most popular areas, there is a shortage of supply. It is difficult to find new land around Greater London.  
+- Environmental cost. The British have a strong attachment to preserving “Greenbelt Land” and many areas are protected from further housing development.  
+- Not in my back yard. People are usually in favor of more homes being built, as long as they are not in their local area. Increasing supply of houses leads to more congestion, crowded amenities and loss of greenbelt land.  
+- Vested interests perhaps most importantly increased supply reduces the value of your existing home. Therefore, existing homeowners have a vested interest in keeping the supply as low as possible in their area.  
+- Lack of Social Housing. Since Mrs Thatcher encouraged the sale of council housing, the number of new social housing (an euphemism for council housing) has been very low.
+
+The consequence of this growing demand compared to limited growth in supply, is that there is strong economic pressure on house prices.  
+  
+## *Demand is growing* 
+A very simple economic truth: if demand increases faster than supply then prices will rise. The London population continues to grow (9.541.000 a 1,22% increase from 2021). Also, the number of householders is growing at a faster rate than the population.  
+  
+## *Strong demand for home ownership* 
+In recent years, the % of first-time buyers has fallen. The number of people able to buy a house has fallen, due to the decline in affordability. However, there is a strong cultural and economic desire to own your property. Increasingly common is for parents to help their children to buy a house, with a deposit or even putting the mortgage in their name. This has enabled first-time buyers to overcome the impossible income multiples and buy despite the expensive prices.  
+  
+## *Speculation / Buy to let* 
+Housing has increasingly been seen as a good investment. The returns on buying a house have consistently outperformed the stock market. In London, there has been a lot of demand from foreign nationals such as Russians and Arabs. Some argue this speculative increase in demand means the high house prices are unsustainable and are liable to fall.
+  
+## *Renting is also expensive* 
+The alternative to buying a house is renting. But, the cost of renting has also risen faster than incomes. The increased price of renting reflects the fundamental imbalance in demand and supply. It is true that the price of housing is now rising faster than renting, but it still makes economic sense to buy rather than rent.  
+  
+## *The Covid Effect* 
+In March 2021 the Covid shutdown led to an unprecedented fall in GDP, with many workers losing income or their jobs. Despite GDP still being below the pre-crisis trend there has been no let up in the rise in UK house prices. Whilst those on furlow may struggle with rent, Covid has ironically made buying a house even more attractive.  
+  
+## *Wealth inequality* 
+There is substantial wealth inequality in the UK. With inheritance enabling some to get on the property ladder and afford seemingly ‘unaffordable’ prices. But, the inheritance effects makes it even harder for those who do not benefit from their parents.
+
+\newpage
+After detailing the economic & demographic reasons that have led London to be one of the cities with the most expensive housing in Europe, we are going to try to develop a price prediction model that allows us to determine their evolution based on endogenous factors, that is, those specific to the attributes of a home. 
+
+Of course we will rely on the data provided officially by different authorities to determine the best predictors for a model whose response variable is the purchase price of a house for the districts of London. This is done by creating a model that describes the variability of the data with as few predictor variables as possible. And after the application of the model is finished, we hope that the following questions, beyond the factors that we have just explained, can be answered:  
+  
+- is the age of the house relevant?
+- how important is the surface of the house? and the rooms?
+- is it only the surface or also the location that determines the price of a home?
+- is the availability of a garage a relevant criterion when considering the purchase?
+- having comforts such as central heat system really increases the value of a home?
+Let’s see what the analysis we are going to carry out next, says.
+
+\newpage
+
+# 3.	Accesing our dataset - Data exploration
+
+The first thing we will do is review the dataset that we have obtained from the official site of the City of London. We are going to check the data that it offers us and what it consists of.
+```{r Access_Data, warning=FALSE, include=FALSE}
+LonDat <- read.csv("data/LonDat.csv",stringsAsFactors=FALSE)
+print(dim(LonDat))
+head(LonDat)
+str(LonDat)
+summary(LonDat)
+```
+The LonDat dataset have a total amount of `r prettyNum(nrow(LonDat), big.mark=".")` lines and `r ncol(LonDat)` variables (`r names(LonDat) %>% str_c("*", . , "*") %>% str_flatten(collapse=", ")`). The description of the variables is as follows:  
+```{r Data_Variables, echo=FALSE, fig.height=9}
+datavar <- read_excel("data/variables.xlsx", sheet = "Data")
+plot.new()
+grid.table(datavar, rows=NULL)
+
+```
+The variables can be analysed as:  
+
+- *Geographical data* – Latitude, Longitude  
+- *Numerical data* – DoBa, HabCin, HabCuat, HabTres, HabDos, CXX3, CXX4, CXX5, CXX2, CXX2, CXXI, Acond, MCC, GDob, GSen, CTCH, CTA, TPA, AlPro    
+- *Neighbourhood* - Cper, ProfC, ProfNC, ResJub, DesVen, TasDes, DenPob   
+  
+The above table shows complete list of variables organised into several groups, and for the most part representing the levels in a categorical variable expanded into dummy (0/1) variables.
+
+- *Age* - Represent the time period in which the property was constructed. The omitted category is built before 1914.  
+- *Tenure* - Represents the type of building. The omitted category is bungalow.  
+- *Garage* - Omitted category is NO Garage.  
+  
+# 4. Correlation analysis  
+  
+*Correlation analysis* is statistical method that is used to discover if there is a relationship between two variables/datasets, and how strong that relationship maybe. In terms of data analysis, this means that correlation analysis is used to analyse quantitative data gathered from research methods to identify whether there is any significant connections, patterns, or trends between the two.
+
+Essentially, correlation analysis is used for spotting patterns within datasets: a positive correlation result means that both variables increase in relation to each other, while a negative correlation means that as one variable decreases, the other increases.
+
+In our case, the relationship between the variables/predictors help us to prevent any high influence predictor to deviate the results if it is not significant. Best way is to minimize the *collinearity* (linear relationship between two explanatory variables) between the variables to reduce the influence. In below graph, darker shades of blue and red conveys the high positive and negative association:  
+  
+```{r Correlation_Analysis, echo=FALSE}
+#Checking for correlation
+Corvar <- cor(LonDat[,c(4,23:31)])
+head(round(Corvar,2))
+```
+
+```{r Correlation_Analysis_Plot, echo=FALSE, out.width="50%"}
+corrplot(Corvar, method="color", tl.col="black", tl.srt=45, type = "upper", order="hclust", sig.level = 0.01)
+chart.Correlation(Corvar, histogram=TRUE, pch=19, gap=4)
+col<- colorRampPalette(c("#1f235a", "white", "#ff0101"))(20)
+heatmap(x = Corvar, col = col, symm = TRUE)
+```  
+  
+From previous figures we can conclude:  
+
+- *PrCompra (Purchase Price)* and *MCC (Floor area in square meters)* are positively correlated with value of 0.7014.  
+- *DesVen (Rate of unemployed who cannot buy a house)* and *SinCo (Proportion of houses without a car)* are positively correlated with value of 0.734.  
+- *Cper (Cars per person in neighborhood)* and *SinCo (Proportion of houses without a car)* are negatively correlated with value of -0.863.  
+- *DesVen (Rate of unemployed who cannot buy a house)* and *Cper (Cars per person in neighborhood)* are negatively correlated with value of -0.7400.  
+
+Now, we know the correlation between different predictors we have to bear in mind for our project, without neglecting the rest that have a slight relationship.
+
+# 5. Data wrangling  
+  
+As mentioned at Point *3.* we have noticed that there are four columns that had dummy expanded categorical variables for which few data were missing. 
+
+Since we have detected that there are dummy variables that represent a single entity, we decided to convert these dummy variables into factor variables:
+```{r Data_Wrangling, echo=FALSE, fig.height=6}
+datavar <- read_excel("data/variables.xlsx", sheet = "Variables")
+plot.new()
+grid.table(datavar, rows=NULL)
+
+```
+
+```{r Dummies, warning=FALSE, include=FALSE}
+Dummy <- function(mat,lev1="Level1") {
+  mat <- as.matrix(mat)
+  factor((mat %*% (1:ncol(mat))) + 1,
+         labels = c(lev1, colnames(mat)))
+}
+
+Age      <- Dummy(LonDat[,5:9],"SXX")
+Type     <- Dummy(LonDat[,10:12],"Others")
+Garage   <- Dummy(LonDat[,13:14],"Aparcam")
+Bedrooms <- Dummy(LonDat[,18:21],"HabUna")
+
+Project <- data.frame(LonDat[,c(2:4,15:17,22,23,26)],Age,Type,Garage,Bedrooms)
+summary(Project)
+
+#Defining final columns
+Project$AlPro <- factor(Project$AlPro)
+Project$Acond <- factor(Project$Acond)
+Project$DoBa <- factor(Project$DoBa)
+Project$CXXI <- factor(Project$CXXI)
+
+levels(Project$AlPro) <- c("no", "yes")
+levels(Project$Acond) <- c("no", "yes")
+levels(Project$DoBa) <- c("no", "yes")
+levels(Project$CXXI) <- c("no", "yes")
+
+```
+After the review and once converted dummies to factors, we get the final columns:
+```{r Final_Columns, warning=FALSE, echo=FALSE}
+head(Project)
+```
+## Outlier Analysis & House Prices
+
+Outlier analysis involves identifying abnormal observations in a dataset. It helps to remove erroneous or inaccurate observations which might otherwise skew conclusions.
+
+In the other had, Normalization is the process of ensuring that all of the data points in a dataset are formatted in the same way, so that they can be manipulated equally. Without normalization, it may be impossible to sort, graph, or otherwise assess datasets. Boxplot is a great way to detect outliers and inspect the variables by creating visual for the given variables:
+```{r Outlier, warning=FALSE, echo=FALSE, out.width="70%"}
+boxplot(LonDat$PrCompra,xlab = "All properties", ylab = "Purchase Price",col = "steelblue", lwd = 0.5)
+LonDat <- LonDat[LonDat$PrCompra < 600000,]
+
+boxplot(LonDat$PrCompra,xlab = "Properties under 600k ", ylab = "Purchase Price",col = "steelblue", lwd = 0.5)
+```
+In the first boxplot, we notice a very large number of points outside the quantile regions. As we can see, there are single values above 600k GBP which could be an error. Thus, we decide to remove only the data points above 600k GBP. In the resulting boxplot, we can see a normalized result. 
+
+By examining the price of the house compared to the floor area, it can be seen that as the size of the house increases, 
+so does the price:
+```{r PrCompra_Floor_Plot, warning=FALSE, echo=FALSE, out.width="80%"}
+
+plot(LonDat[,c("MCC","PrCompra")],pch=3,cex=0.5,xlab = "Floor Area", ylab = "Purchase Price")
+lines(lowess(LonDat[,c("MCC","PrCompra")]),col="steelblue",lwd = 2)
+
+```
+However, there are still many outliers as evidenced by the box plot. We consider other variables may be taken into account for the discrepancy, as house prices do not depend solely on their size. Geographical for example as properties in one district may not cost the same as in other districts, even if they have the same floor square meters:
+
+```{r House_Prices_Floor, warning=FALSE, echo=FALSE, out.width="90%"}
+
+nClass = 10
+Palette <- rev(brewer.pal(nClass,"Blues"))
+Classes <- classIntervals(LonDat$PrCompra,nClass,"quantile")
+Colours <- findColours(Classes,Palette)
+plot(LonDat$Longitud,LonDat$Latitud,pch=16,cex=0.5,col=Colours,asp=1,xlab = "Longitude", ylab = "Latitude")
+title("House prices distribution per District")
+
+```
+The house price map of London districts, shows how these are distributed. By applying a model that relates this price to the east and north extremes, we can see that prices increase moving north and west, while prices decrease moving south and east. However, and despite this first consideration, we will proceed to add other predictor variables to determine if this is the only relationship to consider in terms of housing prices:
+```{r Model_Price_Floor, warning=FALSE, echo=FALSE}
+Long <- Project$Longitud/1000
+Lat <- Project$Latitud/1000
+mod1 <- lm(PrCompra~Long+Lat,data=Project)
+AIC(mod1)
+
+mod2 <- lm(PrCompra~Long+Lat+I(Long^2)+I(Lat^2)+I(Long*Lat),data=Project)
+AIC(mod2)
+
+summary(mod1) # Price decreases when move East. A bit lower by moving South
+
+summary(mod2) # A lower AIC means higher price as we move West
+
+stepAIC(mod2)
+
+```
+After applying the relationship model between housing price and geographic location, we can confirm what was seen previously and affirm that, as we see, by having a lower AIC, prices increase when moving towards the North and West, while they decrease when move south and east.
+
+\newpage
+# 5. Data distribution  
+
+## Purchase Price distribution   
+The main variable we´d like to analyze is *PrCompra* (Purchase Price), as is the one we want to predict. We´re going to proceed as follows:  
+
+- First we will construct a histogram to visualize the distribution of *PrCompra* and find the mean value (dashed line).   
+- Second, we will apply a density plot allowing us to have smoother distributions by smoothing out the noise. The peaks the density plot, will help us display where values are concentrated over the interval.  
+- Third, we´re going to treat the variable with a logarithmic transformation, as data is clearly right skewed and it will allow us to give it a more normal pattern.  
+```{r Purchase_Price_Plot, warning=FALSE, echo=FALSE}
+ppp1 <- ggplot(Project, aes(x=PrCompra)) + geom_histogram(bins = 100, color="black", fill="steelblue")+
+  geom_vline(aes(xintercept=mean(PrCompra)),
+            color="red", linetype="dashed", size=1)
+
+ppp2 <- ggplot(Project, aes(x=PrCompra)) + 
+ geom_histogram(bins = 100, aes(y=..density..), colour="black", fill="steelblue")+
+ geom_density(alpha=.5, fill="#e2e9f2")
+
+ppp3 <- ggplot(Project, aes(x=log(PrCompra))) + 
+ geom_histogram(bins = 100, aes(y=..density..), colour="black", fill="steelblue")+
+ geom_density(alpha=.5, fill="#e2e9f2")
+
+grid.arrange(ppp1, ppp2, ppp3, nrow=3)
+
+```
+As we can see, the third plot for *log(PrCompra)*, clearly shows that *PrCompra* displays normality.  
+
+## Predictors distribution  
+
+The rest of the variables in the dataset have a categorical character (*has or does not have*) such as *Acond* that defines if the house has central heating or not, depicted as a dummy variable. In the other hand, we have multiple dummy variables representing a single category like *Age*, *Type* or *Bedrooms* that have been merged into factor columns. In order to be able to obtain clear information from these predictors versus *PrCompra* (Purchase Price), we are going to treat them with a logarithmic transformation again:  
+
+```{r Predictors_Plot, warning=FALSE, echo=FALSE}
+pp5 <- ggplot(Project, aes(x=log(PrCompra), color=Project$Acond)) +
+  geom_freqpoly()+
+  theme(legend.position = "top")
+
+pp6 <- ggplot(Project, aes(x=log(PrCompra), color=Project$AlPro)) +
+  geom_freqpoly()+
+  theme(legend.position = "top")
+
+pp7 <- ggplot(Project, aes(x=log(PrCompra), color=Project$CXXI)) +
+  geom_freqpoly()+
+  theme(legend.position = "top")
+
+pp8 <- ggplot(Project, aes(x=log(PrCompra), color=Project$Age)) +
+  geom_freqpoly()+
+  theme(legend.position = "top")
+
+pp9 <- ggplot(Project, aes(x=log(PrCompra), color=Project$Type)) +
+  geom_freqpoly()+
+  theme(legend.position = "top")
+
+pp10 <- ggplot(Project, aes(x=log(PrCompra), color=Project$Garage)) +
+  geom_freqpoly()+
+  theme(legend.position = "top")
+
+pp11 <- ggplot(Project, aes(x=log(PrCompra), color=Project$Bedrooms)) +
+  geom_freqpoly()+
+  theme(legend.position = "top")
+
+pp12 <- ggplot(Project, aes(x=log(PrCompra), color=Project$DoBa)) +
+  geom_freqpoly()+
+  theme(legend.position = "top")
+```
+
+*First comparison*  
+
+- *PrCompra (Purchase Price) vs Age*: this plot depicts that properties ‘Built between 1931 and 1960’(CXX1) have the highest purchase ratio among all the categories, followed by ‘Built previously 1930’(SXX). The rest of the variables are shown very far from these two.  
+
+- *PrCompra (Purchase Price) vs Type*: this plot shows that people are willing to purchase flat or apartments most preferably, followed by other type of properties and at the end, semi-detached.
+
+```{r Predictors_Comparison1, warning=FALSE, echo=FALSE}
+grid.arrange(pp8, pp9, nrow=2)
+```
+*Second comparison*  
+  
+- *PrCompra (Purchase Price) vs Garage*: The line plot shows that properties with garage are in the majority, followed by those with a single garage.  
+
+- *PrCompra (Purchase Price) vs Bedrooms*: From this graph we can see that the vast majority of buyers decide on those homes that have three bedrooms. In decreasing order, they opt for those with two and one bedrooms. We also see that homes with four and five bedrooms are the least sold.
+
+```{r Predictors_Comparison2, warning=FALSE, echo=FALSE}
+grid.arrange(pp10, pp11, nrow=2)
+```
+
+*Third comparison*  
+
+- *PrCompra (Purchase Price) vs Acond*: In this plot, we can see that having an extra comfort, such as central heating, is an added value to a home, since they are the most selected by the owners.  
+
+- *PrCompra (Purchase Price) vs DoBa (Two or more bathrooms)*: This graph tells us that homes with two bathrooms or more are in the minority as opposed to those with only one bathroom.
+
+```{r Predictors_Comparison3, warning=FALSE, echo=FALSE}
+grid.arrange(pp5, pp12, nrow=2)
+```
+
+*Fourth comparison*  
+
+- *PrCompra (Purchase Price) vs AlPro (Leasehold or Freehold)*: In this graph we can see that the properties under lease are the majority if we compare them with those that are owned.  
+
+- *PrCompra (Purchase Price) vs CXXI (New property-S.XXI)*: In this case we can see that the vast majority of homes are new compared to those that were built before the 21st century.
+
+```{r Predictors_Comparison4, warning=FALSE, echo=FALSE}
+grid.arrange(pp6, pp7, nrow=2)
+```
+# 6. Modelling  
+
+## Predictors relevance - AIC  
+
+The fact of being able to determine the correlation that exists between the predictors and what we obtain from this interaction leads us to apply an estimation to the data model. If we take into account that the response variable is continuous (numerical variables that have an infinite number of values between any two values), we can affirm that the regression favors the modeling.
+
+We have decided to apply the regression on the *PrComp* variable linked to each of the other predictors. In order to determine the most appropriate estimate, we will apply the AIC. AIC is an estimator (a single number score) that can be used to determine which of multiple models is most likely to be the best model for a given dataset. It estimates models relatively, meaning that AIC scores are only useful in comparison with other AIC scores for the same dataset. A lower AIC score is better.
+
+Through the AIC estimator, we will be able to determine the model closest to what we are trying to determine.  
+
+```{r AIC, warning=FALSE, echo=FALSE}
+AICs <- rep(NA,10)
+Models <- vector("list",10)
+Vars <- colnames(Project)[4:13]
+for(i in 1:10) {
+      Models[[i]] <- lm(formula(paste0("PrCompra~",Vars[i])),data=Project)
+      AICs[i] <- AIC(Models[[i]])
+}
+print(AICs)
+
+minAIC <- which.min(AICs)
+print(AICs[minAIC])
+print(Vars[minAIC])
+summary(Models[[minAIC]])
+```
+```{r Evidence_Model, warning=FALSE, include=FALSE}
+#Evidence in favor of the model
+delta <- AICs - min(AICs)                      # Differences
+evidence <- exp(-0.5*delta)/sum(exp(-0.5*delta))# Probabilities
+evidence
+```
+
+```{r AIC_Results, warning=FALSE, echo=FALSE, out.width="70%"}
+names(AICs) <- Vars                        
+sAICs <- sort(AICs)                         
+print(sAICs)
+plot(sAICs,xaxt="n", axes = FALSE, type = "b", pch = 21, cex = 2, lwd = 2, bg = "grey", col = "steelblue")                      
+axis(1,labels=names(sAICs),at=1:length(Vars),las=2,cex.axis=.75)
+axis(2)
+for(i in 2:length(Vars)){                    
+   cat(paste(names(sAICs)[i],sAICs[i]-sAICs[i-1],"\n"))
+}
+
+```
+When applying the AIC, we can see that the predictor *MCC (Floor Area)* is the most relevant, followed by *Bedrooms*. Other predictors add a slight variation to the model. *CXXI (New Property)*, *ProfC (Proportion of houses with professional qualification)* and *Age* are the least significant variables.  
+
+## Linear Regression  
+
+All the analysis we have carried out so far allows us to conclude that there is a clear relationship between the predictors and the *PrCompra* variable. Among all the available regressions (Linear, Logistic, Polynomial...) we are going to apply the Linear model and fit it with all the predictors that exist in our dataset, in order to be able to explain the predictions and variations in the response variable, which could be attributed to changes in the variables.
+
+We are not going to consider the variables Latitude and Longitude, since these are coordinates. However, we do not discard them, since they will be used later in the spatial analysis of the dataset.
+```{r Linear_Coeficients, warning=FALSE, echo=FALSE}
+
+linmodel <- lm(log(PrCompra)~ AlPro+ Acond+ DoBa+ CXXI+ MCC+ ProfC+ Age+ Type+ Garage+ Bedrooms, data=Project)
+summary(linmodel)
+
+```
+From the results obtained from the linear regression, we can observe the following:  
+
+- Intercept coefficient: 10,3488   
+
+- Parameters with significant p-values(<0,05) and positive co-efficients:
+ 
+    o	CXXIyes  
+    o	MCC  
+    o	ProfC  
+    o	AgeCXX1  
+    o	TypeCTCH  
+    o	BedroomsHabDos  
+    o	BedroomsHabTres  
+    o	BedroomsHabCin  
+
+- *PrCompra* increases when the above predictors increase.  
+
+- Parameters with significant p-values(<0.05) and negative co-efficients are:  
+
+    o	AgeCXX2    
+    o	AgeCXX5    
+    o	TypeTPA    
+    o	TypeTypSemiD  
+    o	TypetypFlat  
+
+- *PrCompra* decreases when the above predictors increase.  
+
+- Parameters which are not significant p-values(>0.05) are:  
+
+    o	AlProyes  
+    o	Acondyes  
+    o	DoBayes 
+    o	GarageGSen  
+    o	GarageGDob  
+    o	BedroomsHabCuat  
+
+The adjusted R-Squared is only 0.5391 (53%), with what we can consider a good result.  
+
+## Best Subsets Regression  
+
+Best Subsets Regression is a model selection approach that consists of testing all possible combination of the predictor variables, and then selecting the best model according to statistical criteria. 
+
+First, we use a direct subset selection method for *PrCompra* and plot *adjr2* (adjusted coefficient of determination of a multiple linear regression model) for all variables in our previous Linear Regression Model.  
+
+On the other hand, we use the selection plot best subsets backward selection plot for *PrCompra* and plot *adjr2* results for all variables. What we expect is that *MCC (Floor Area)* is the most significant variable of all.  
+
+```{r Subset_Both, warning=FALSE, include=FALSE}
+ld_model <- lm(PrCompra~AlPro+Acond+DoBa+CXXI+MCC+ProfC+Age+Type+Garage+Bedrooms, data = Project)
+step <- stepAIC(ld_model, direction="both")
+step$anova
+```
+
+```{r Subset_Forward, warning=FALSE, echo=FALSE}
+library(leaps)
+
+set.seed(123)
+sample <- sample(c(TRUE, FALSE), nrow(Project), replace = T, prob = c(0.6,0.4))
+train <- Project[sample, ]
+test <- Project[!sample, ]
+```
+
+The best direct subset selection plot for *PrCompra* and *Log PrCompra* results for all variables are showing below: 
+```{r Subset_Forward_Plot, warning=FALSE, echo=FALSE, out.width="50%"}
+
+#Best subsets with Forward selection
+ld_orgnl_frwd <- regsubsets(PrCompra~AlPro+Acond+DoBa+CXXI+MCC+ProfC+Age+Type+Garage+Bedrooms, data = train, method = "forward",nvmax = 10)
+ld_frwd <- regsubsets(log(PrCompra)~AlPro+Acond+DoBa+CXXI+MCC+ProfC+Age+Type+Garage+Bedrooms, data = train, method = "forward",nvmax = 10)
+results <- summary(ld_orgnl_frwd)
+plot(ld_orgnl_frwd,scale="adjr2",col = col)
+title(main= "Best subsets Forward selection plot for Price")
+plot(ld_frwd,scale="adjr2" ,col = col)
+title(main= "Best subsets Forward selection plot for Log Price")
+```
+
+In the other hand, we plot the backward selection of the best subsets for *PrCompra* and *Log PrCompra*:  
+```{r Subset_Backward_Plot, warning=FALSE, echo=FALSE, out.width="50%"}
+#Best subsets with Backward selection
+ld_orgnl_bkwd <- regsubsets(PrCompra~AlPro+Acond+DoBa+CXXI+MCC+ProfC+Age+Type+Garage+Bedrooms, data = train, method = "backward",nvmax = 10)
+ld_bkwd <- regsubsets(log(PrCompra)~AlPro+Acond+DoBa+CXXI+MCC+ProfC+Age+Type+Garage+Bedrooms, data = train, method = "backward",nvmax = 10)
+results <- summary(ld_bkwd)
+plot(ld_orgnl_bkwd,scale="adjr2",col = col)
+title(main= "Best subsets Backward selection plot for Price")
+plot(ld_bkwd,scale="adjr2",col = col)
+title(main= "Best subsets Backward selection plot for Log Price")
+```
+
+What we can see in the plots for *PrCompra* is:
+
+- MCC is the most significant variable.
+- Acond is another relevant variable.
+
+However, we can see certain differences in both approaches.
+
+In the other hand, plots for *Log PrCompra* we can see that they provide us with similar significant variables Unlike the results obtained in Linear Regression model. From most to least relevant we got:  
+
+- MCC (Floor Area)  
+- Acond (Central Heat)  
+- TPA (Type Flat/Apartment)  
+- AlPro (Leasehold or Freehold indicator)  
+- DoBa (Two or more bathrooms)  
+- AgeCXX1 (Built between 1930 and 1960)  
+- CTA (Semi-detached property)  
+- GSen (Single Garage)  
+- AgeCXX3 (Built between 1971 and 1980)  
+- AgeCXX4 (Built between 1981 and 1990)  
+
+Following this approximation, we plot the *BIC (Bayesian Information Criteria)* and *Mallow´s Cp* plots for *PrCompra*. From this, we can identify that the value of *adjR2* is maximum at 10 and the values of *BIC* and *Cp* are minimum in 10, which implies that we can have up to 10 variables to create our model.
+```{r Subset_Forward_Plot_BICF, warning=FALSE, echo=FALSE, out.width="80%"}
+
+tibble(predictors = 1:10,
+       adj_R2 = results$adjr2,
+       Cp = results$cp,
+       BIC = results$bic) %>%
+  gather(statistic, value, -predictors) %>%
+  ggplot(aes(predictors, value, color = statistic)) +
+  ggtitle("Plot BIC & Cp for PrCompra") +
+  theme(plot.title = element_text(hjust=0.5)) +
+  geom_line(show.legend = F) +
+  geom_point(show.legend = F) +
+  facet_wrap(~ statistic, scales = "free")
+
+```
+Plotting the *BIC* and *Cp* graphs for *Log PrCompra*, we get that the *adjR2* value is maximum at 10 and the *BIC* and *Cp* values are also minimum at 10, implying the same conclusion in the graphic for *PrCompra*. The only difference between the two is a slight change in curvature:
+
+```{r Subset_Backward_Plot_BICB, warning=FALSE, echo=FALSE, out.width="80%"}
+
+tibble(predictors = 1:10,
+       adj_R2 = results$adjr2,
+       Cp = results$cp,
+       BIC = results$bic) %>%
+  gather(statistic, value, -predictors) %>%
+  ggplot(aes(predictors, value, color = statistic)) +
+  ggtitle("Plot BIC & Cp for log(PrCompra)") +
+  theme(plot.title = element_text(hjust=0.5)) +
+  geom_line(show.legend = F) +
+  geom_point(show.legend = F) +
+  facet_wrap(~ statistic, scales = "free")
+```
+
+```{r Subset_Results, warning=FALSE, include=FALSE}
+which.min(results$cp)
+
+#Plotting using models and required number of variables
+coef(ld_model,10)
+coef(ld_frwd,10)
+coef(ld_bkwd,10)
+```
+
+## Cross Validation 
+
+We are going to use the models previously created from the *training* model and apply them to the *test* model, verifying the errors resulting from the *Cross Validation*. We take into account that as we have previously determined in our models, the selection of 10 variables is suggested to draw the graph.  
+
+```{r Cross Validation, warning=FALSE, include=FALSE}
+#Cross Validation with test data
+cross_test <- model.matrix(log(PrCompra) ~AlPro+Acond+DoBa+CXXI+MCC+ProfC+Age+Type+Garage+Bedrooms, data = test)
+
+validation_errors <- vector("double", length = 10)
+
+val_error <- function(myModel){
+for(i in 1:10) {
+  coef_x <- coef(myModel, id = i) # extract coefficients for model size i
+  pred_x <- cross_test[ , names(coef_x)] %*% coef_x 
+  validation_errors[i] <- mean((test$PrCompra - pred_x)^2)
+}
+plot(validation_errors, type = "b",col = col)
+}
+```
+
+```{r Cross Validation_Forward, warning=FALSE, echo=FALSE}
+val_error(myModel = ld_orgnl_frwd)
+title(main = "CV for PrCompra forward best subset selection")
+
+```
+
+```{r Cross Validation_Backward, warning=FALSE, echo=FALSE}
+val_error(myModel = ld_orgnl_bkwd)
+title(main = "CV for PrCompra backward best subset selection")
+
+```
+
+If we now apply log, we will appreciate that when we plotting the cross validation errors the curvature varies from the two plots where log is not applied to *PrCompra*. Despite this, we can continue to consider that 10 is the number of variables that we can select to continue to be significant:  
+```{r Cross Validation_Forward_Log, warning=FALSE, echo=FALSE}
+val_error(myModel = ld_frwd)
+title(main = "CV for Log PrCompra forward best subset selection")
+```
+
+```{r Cross Validation_Backward_Log, warning=FALSE, echo=FALSE}
+val_error(myModel = ld_orgnl_bkwd)
+title(main = "CV for log PrCompra backward best subset selection")
+
+```
+From the information obtained so far, we can clearly say that MCC (Floor Area) has a determining role in predicting the final price of a home as opposed to the rest of the predictors. For our project, and after all approaches used, it is clear that the final model is definitely the following:
+```{r Final_Model, warning=FALSE, echo=FALSE}
+fin_mod <- lm(PrCompra~MCC+Bedrooms+Type+DoBa+Garage+AlPro+Acond+Age+ProfC,data=Project)
+summary(fin_mod)
+
+```
+
+## Geospatial analysis  
+
+![London Boroughs (Districts)](img\LondonDistricts.png)
+
+Through geospatial analysis, we are going to apply a series of analysis methods that will allow us to establish the relationship of the variables that we will establish with their geographical location. The variables chosen for this analysis are Municipality (District), Purchase Price, Floor Area, and Standardized Residuals.
+
+In order to understand if the Municipality (District) variable has an influence on the house price, following plot provide us relevant information:
+```{r Geospatial_Analysis, warning=FALSE, include=FALSE}
+
+LonDis <- readOGR(dsn="London",layer="London",stringsAsFactors=FALSE) # Loading London districts data
+LonHe <- SpatialPointsDataFrame(Project[,1:2],Project) # Creating SPDF
+proj4string(LonHe) <- CRS(proj4string(LonDis)) # Copy CRS (Coordinate Reference System)                       
+LonHeLonDis <- over(LonHe,LonDis) # Spatial joining points and polygons
+#dim(LonHeLonDis)
+#head(LonHeLonDis)
+Project$district <- gsub("London District","",LonHeLonDis$NAME) # Add district names only to data
+
+districts <- names(table(Project$district)) # Districts names
+NB <- length(districts)
+
+MapLon <- function(Var,nClass=9,dp=0,plotNames=FALSE){
+   require(classInt)
+   require(RColorBrewer)
+   Classes <- classIntervals(Var,nClass,method="quantile",dataPrecision=dp)
+   Palette <- brewer.pal(nClass,"Blues")
+   Colours <- findColours(Classes,Palette)
+   plot(LonDis,col=Colours)
+   legend("bottomright",
+      legend=names(attr(Colours,"table")),
+      fill=attr(Colours,"palette"),
+      cex=0.75,bty="n")
+   box()
+   if(plotNames) {
+      xy <- coordinates(LonDis)
+      text(xy[,1],xy[,2],DisName,col="black",cex=0.5)
+   }
+}
+
+DisName <- gsub(" London Districts ","",LonDis$NAME)
+xy <- coordinates(LonDis)
+plot(LonDis)
+text(xy[,1],xy[,2],DisName,col="blue",cex=0.5)
+
+data.frame(DisName,LonDis$NAME)                   
+ head(Project)                                
+ NB <- length(LonDis)                            
+ results <- matrix(0,NB,2)                   
+ for(i in 1:NB) {
+    m.x <- lm(PrCompra~MCC,data=Project[Project$district == DisName[i],])
+    results[i,] <- coef(m.x)
+ }
+
+rownames(results) <- DisName                  
+colnames(results) <- c("Intercept","FlorArea")
+
+```
+
+```{r Log(Price)_District, warning=FALSE, echo=FALSE}
+
+boxplot(log(PrCompra)~district,data=Project,outpch=16,outcol="steelblue",outcex=0.75,xaxt="n",xlab = "",ylab = "Log(Price)")
+axis(1,labels=districts,at=1:NB,cex.axis=0.75,las=2)
+title("Log(Price) by District")
+```
+We can conclude that the median house price is roughly in the same range except for the City of London, where the median price is higher than elsewhere. 
+
+We will confirm it with the color map by district, that offers us a clearer vision, since we can appreciate the uniformity that exists in the distribution of housing prices in each one of them. The darker colors represent a higher average price, while the lighter colors indicate the opposite. In this way, the city center and its surroundings have a higher price than the rest of the districts:
+```{r Mapping_Log(Price)_District, warning=FALSE, echo=FALSE}
+
+MapLon(tapply(Project$PrCompra,Project$district,median),dp=3)
+title("Log(Price) by District")
+
+```
+
+```{r FloorArea_District, warning=FALSE, echo=FALSE}
+
+boxplot(MCC~district,data=Project,outpch=16,outcol="steelblue",outcex=0.75,xaxt="n",xlab = "",ylab = "MCC")
+axis(1,labels=districts,at=1:NB,cex.axis=0.75,las=2)
+title("Floor Area by District")
+
+```
+In the case of the median variables in each of the districts, we can see that the median surface area of properties undergoes slight changes from district to district.
+
+Although the box plot tells us that, except for London City, the median values are not very different, the district map does show the difference: as we get closer to the city center, the median area decreases , with which we can think that the local model fits better:
+```{r Mapping_FloorArea_District, warning=FALSE, echo=FALSE}
+
+MapLon(results[,2]) # without District names
+title("Floor Area by District")
+
+```
+If we look at the following plot, the median residuals by district indicate that there are no relevant changes in these values. On the map, the residual median is slightly more significant in the northwest area of the map compared to the rest of the areas.
+```{r Standardized_Residuals, include=FALSE}
+fin_mod <- lm(PrCompra~MCC+Bedrooms+Type+DoBa+Garage+AlPro+Acond+Age+ProfC,data=Project)
+summary(fin_mod)
+Project$stdres <- stdres(fin_mod)
+```
+
+```{r Standardized_Residuals_Plot, echo=FALSE}
+boxplot(stdres~district,data=Project,outpch=16,outcol="steelblue",outcex=0.75,xaxt="n",xlab = "",ylab = "stdres")
+axis(1,labels=districts,at=1:NB,cex.axis=0.75,las=2)
+title("Standardized Residual by district")
+
+```
+
+```{r Standardized_Residuals_Map, warning=FALSE, echo=FALSE}
+
+MapLon(tapply(Project$stdres,Project$district,median),dp=3)
+title("Standardized Residual by district")
+
+```
+# 7. Final conclusions 
+
+We have developed, at the beginning of this project, the aspects that are considered decisive as drivers of the increase in the price of housing in the city of London. For our part, we have tried to delve even deeper by analyzing the tangible factors that determine the price of housing, in order to be able to consider, from an objective point of view, all the variables that influence the price of housing. And of course, we believe we have answered the questions we asked ourselves at the beginning.
+
+We believe, after finishing this project, that there are measures and tools to be able to affirm what the market trend will be according to a series of variables and conditions, as we have been able to appreciate. And we can ensure that the data is real (see Bibliography) and is available to anyone who wishes to dedicate time and effort to it.  
+
+# 8. Bibliography  
+
+The *economic information* mentioned at the beginning of this project has been obtained from these sources:
+
+https://www.economicshelp.org  
+https://www.london.gov.uk/sites/default/files/house-prices-in-london.pdf  
+https://www.progressiveproperty.co.uk  
+https://www.reuters.com  
+https://www.trustforlondon.org.uk 
+
+The dataset is a subset of mortgage records and other variables for the area known as Greater London and has been extracted from London Datastore. It is released under UK Open Government License. All the information from this project, can be found here:
+
+*London Boroughs (Districts) Map*  
+https://data.london.gov.uk/download/london_boroughs/9502cdec-5df0-46e3-8aa1-2b5c5233a31f/London_Boroughs.gpkg  
+
+*Dataset*  
+https://data.london.gov.uk/dataset/uk-house-price-index  
+https://data.london.gov.uk/dataset/number-and-density-of-dwellings-by-borough  
+https://data.london.gov.uk/dataset/jobs-and-job-density-borough  
+https://data.london.gov.uk/dataset/local-authority-average-rents  
+https://data.london.gov.uk/dataset/ratio-house-prices-earnings-borough  
+https://data.london.gov.uk/dataset/average-house-prices  
+https://www.gov.uk/search-property-information-land-registry  
+
+
